@@ -1,0 +1,115 @@
+import time
+import numpy as np
+
+def lu(A):
+    U = np.array(A, dtype=float)
+    n = U.shape[0]
+    L = np.eye(n)
+    for k in range(n - 1):
+        a = U[k, k]
+        for i in range(k + 1, n):
+            L[i, k] = U[i, k] / a                  
+        for i in range(k + 1, n):
+            U[i, k:] = U[i, k:] - L[i, k] * U[k, k:]
+    return L, U
+
+def solve_lu(L, U, b):
+    n = len(b)
+    y = np.zeros(n)
+    for i in range(n):                 
+        s = b[i]
+        for j in range(i):
+            s = s - L[i, j] * y[j]
+        y[i] = s
+    x = np.zeros(n)
+    for i in range(n - 1, -1, -1):     
+        s = y[i]
+        for j in range(i + 1, n):
+            s = s - U[i, j] * x[j]
+        x[i] = s / U[i, i]
+    return x
+
+def rref(A, tol=1e-10):
+    R = np.array(A, dtype=float)
+    r = 0
+    m, n = R.shape
+    pivots = []
+    for c in range(n):
+        if r == m:
+            break
+        p = r + np.argmax(np.abs(R[r:, c]))
+        if abs(R[p, c]) < tol:
+            continue
+        else:
+            R[[r, p]] = R[[p, r]]
+        R[r] = R[r] / R[r, c]
+        for i in range(m):
+            if i == r:
+                continue
+            R[i] = R[i] - R[i, c] * R[r]
+        pivots.append(c)
+        r += 1
+    return R, pivots
+
+def inverse(P):
+    P = np.array(P, dtype=float)
+    n = P.shape[0]
+    M = np.hstack([P, np.eye(n)])
+    R, pivots = rref(M)
+    return R[:, n:]
+
+def sherman_morrison(Ainv, u, v):
+    Au = Ainv @ u
+    vA = v @ Ainv
+    return Ainv - np.outer(Au, vA) / (1 + v @ Au)
+
+if __name__ == "__main__":
+    rng = np.random.default_rng(0)
+    A = np.array([[2, 1, 1], [4, 3, 3], [8, 7, 9]])
+    L, U = lu(A)
+    print("L =\n", L)
+    print("U =\n", U)
+    print("L U = A:", np.allclose(L @ U, A))
+    ok = True
+    for _ in range(20):
+        A = rng.normal(size=(6, 6))
+        L, U = lu(A)
+        if not np.allclose(L @ U, A):
+            ok = False
+    print("random 6x6: L U = A:", ok)
+    ok = True
+    for _ in range(20):
+        A = rng.normal(size=(6, 6))
+        b = rng.normal(size=6)
+        L, U = lu(A)
+        if not np.allclose(solve_lu(L, U, b), np.linalg.solve(A, b)):
+            ok = False
+    print("solve_lu agrees with np.linalg.solve:", ok)
+    A = np.array([[1e-17, 1.0], [1.0, 1.0]])
+    b = np.array([1.0, 2.0])
+    L, U = lu(A)
+    print("without row swap:", solve_lu(L, U, b))
+    # The answer is (0, 1) instead of (1, 1). The pivot is 1e-17, so the
+    # multiplier is 1e17 and U[1, 1] = 1 - 1e17, which rounds to -1e17: the
+    # entry 1 of A is lost. Then x2 = 1 is right, but x1 = (1 - x2) / 1e-17 = 0.
+
+    A_swapped = np.array([A[1], A[0]])
+    b_swapped = np.array([b[1], b[0]])
+    L, U = lu(A_swapped)
+    print("with row swap:", solve_lu(L, U, b_swapped))
+    X = rng.normal(size=(200, 50))
+    new_rows = rng.normal(size=(100, 50))
+    start = time.time()
+    Minv = inverse(X.T @ X)
+    for row in new_rows:
+        Minv = sherman_morrison(Minv, row, row)  
+    time_updates = time.time() - start
+    start = time.time()
+    M = X.T @ X
+    for row in new_rows:
+        M = M + np.outer(row, row)
+        Minv_scratch = inverse(M)
+    time_scratch = time.time() - start
+    print("same result:", np.allclose(Minv, Minv_scratch))
+    print("time with Sherman-Morrison:", round(time_updates, 4), "s")
+    print("time from scratch:", round(time_scratch, 4), "s")
