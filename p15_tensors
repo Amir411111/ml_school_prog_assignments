@@ -1,0 +1,66 @@
+import numpy as np
+
+def rank_one(u, v, w):
+    return np.einsum("i,j,k->ijk", u, v, w)
+
+if __name__ == "__main__":
+    rng = np.random.default_rng(0)
+    T = np.arange(24).reshape(2, 3, 4)
+    flat = T.reshape(-1)
+    ok = True
+    for i in range(2):
+        for j in range(3):
+            for k in range(4):
+                if T[i, j, k] != flat[12 * i + 4 * j + k]:
+                    ok = False
+    print("T[i, j, k] == T.reshape(-1)[12i + 4j + k]:", ok)
+    U1 = T.reshape(2, 12)
+    U2 = T.transpose(1, 0, 2).reshape(3, 8)
+    print("unfolding 2 x 12:\n", U1)
+    print("unfolding 3 x 8:\n", U2)
+    print("ranks:", np.linalg.matrix_rank(U1), np.linalg.matrix_rank(U2))
+    # Both ranks are 2. Every entry is 12i + 4j + k: a part that depends only on
+    # the row plus a part that depends only on the column. So each unfolding is
+    # a sum of two outer products, and its rows are not all multiples of one row.
+
+    A = rng.normal(size=(3, 4))
+    B = rng.normal(size=(4, 5))
+    S = rng.normal(size=(4, 4))
+    x = rng.normal(size=4)
+    y = rng.normal(size=4)
+    print("matrix product:", np.allclose(np.einsum("ij,jk->ik", A, B), A @ B))
+    print("trace:", np.isclose(np.einsum("ii->", S), np.trace(S)))
+    print("dot product:", np.isclose(np.einsum("i,i->", x, y), x @ y))
+    print("outer product:", np.allclose(np.einsum("i,j->ij", x, y), np.outer(x, y)))
+    print("transpose:", np.allclose(np.einsum("ij->ji", A), A.T))
+    print("bilinear form:", np.isclose(np.einsum("i,ij,j->", x, S, y), x @ S @ y))
+    As = rng.normal(size=(100, 4, 4))
+    Bs = rng.normal(size=(100, 4, 4))
+    traces = np.einsum("bii->b", As)
+    products = np.einsum("bij,bjk->bik", As, Bs)
+    traces_loop = []
+    products_loop = []
+    for b in range(100):
+        traces_loop.append(np.trace(As[b]))
+        products_loop.append(As[b] @ Bs[b])
+    print("batch traces:", np.allclose(traces, traces_loop))
+    print("batch products:", np.allclose(products, products_loop))
+    A = rng.normal(size=(3, 4))
+    B = rng.normal(size=(2, 5))
+    X = rng.normal(size=(4, 5))
+    print("kron:", np.allclose((A @ X @ B.T).reshape(-1), np.kron(A, B) @ X.reshape(-1)))
+    # For A, B of size 100 x 100, np.kron(A, B) is 10000 x 10000, so it stores
+    # 10^8 numbers (about 800 MB). Multiplying it by a vector takes 10^8
+    # multiplications, while A X B^T takes only about 2 * 100^3 = 2 * 10^6
+    # and never stores anything bigger than 100 x 100.
+
+    u = rng.normal(size=3)
+    v = rng.normal(size=4)
+    w = rng.normal(size=5)
+    T = rank_one(u, v, w)
+    uvT = np.outer(u, v)
+    ok = True
+    for k in range(5):
+        if not np.allclose(T[:, :, k], w[k] * uvT):
+            ok = False
+    print("every slice T[:, :, k] is w_k * u v^T:", ok)
