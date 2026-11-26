@@ -1,0 +1,107 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+def rref(A, tol=1e-10):
+    R = np.array(A, dtype=float)
+    r = 0
+    m, n = R.shape
+    pivots = []
+    for c in range(n):
+        if r == m:
+            break
+        p = r + np.argmax(np.abs(R[r:, c]))
+        if abs(R[p, c]) < tol:
+            continue
+        else:
+            R[[r, p]] = R[[p, r]]
+        R[r] = R[r] / R[r, c]
+        for i in range(m):
+            if i == r:
+                continue
+            R[i] = R[i] - R[i, c] * R[r]
+        pivots.append(c)
+        r += 1
+    return R, pivots
+
+def inverse(P):
+    P = np.array(P, dtype=float)
+    n = P.shape[0]
+    M = np.hstack([P, np.eye(n)])
+    R, pivots = rref(M)
+    return R[:, n:]
+
+def dual_basis(P):
+    return inverse(P)
+
+def vandermonde(nodes):
+    k = len(nodes)
+    V = np.zeros((k, k))
+    for row in range(k):
+        for j in range(k):
+            V[row, j] = nodes[row] ** j
+    return V
+
+def lagrange_basis(nodes):
+    return inverse(vandermonde(nodes))
+
+def eval_poly(coeffs, t):
+    total = 0
+    for j in range(len(coeffs)):
+        total = total + coeffs[j] * t ** j
+    return total
+
+def interpolate(f, nodes):
+    L = lagrange_basis(nodes)
+    values = f(np.array(nodes, dtype=float))
+    return L @ values
+
+if __name__ == "__main__":
+    rng = np.random.default_rng(0)
+    P = rng.normal(size=(5, 5))
+    Rows = dual_basis(P)
+    print("r_i b_j = I:", np.allclose(Rows @ P, np.eye(5)))
+    x = rng.normal(size=5)
+    coords = Rows @ x
+    rebuilt = sum(coords[i] * P[:, i] for i in range(5))
+    print("x is rebuilt from its coordinates:", np.allclose(rebuilt, x))
+
+    # Why the Lagrange polynomials are the columns of V^{-1}:
+    # V maps the coefficients of a polynomial p to its values (p(t_0), ..., p(t_d))
+    # at the nodes. L_j equals 1 at the node t_j and 0 at the other nodes, so its
+    # vector of values is e_j, i.e. V L_j = e_j. Hence L_j = V^{-1} e_j, which is
+    # the j-th column of V^{-1}.
+    L = lagrange_basis([-1, 0, 1])
+    print("Lagrange polynomials (column j = coefficients of 1, t, t^2 in L_j):\n", L)
+    expected = np.array([[0, 1, 0],
+                         [-0.5, 0, 0.5],
+                         [0.5, -1, 0.5]])
+    print("matches the example in the notes:", np.allclose(L, expected))
+
+    nodes = np.linspace(-1, 1, 9)
+    p = interpolate(lambda t: np.sin(3 * t), nodes)
+    t = np.linspace(-1, 1, 400)
+    plt.figure()
+    plt.plot(t, np.sin(3 * t), label="f(t) = sin(3t)")
+    plt.plot(t, eval_poly(p, t), "--", label="interpolating polynomial")
+    plt.plot(nodes, np.sin(3 * nodes), "o", label="nodes")
+    plt.legend()
+    plt.title("sin(3t), 9 nodes")
+
+    f = lambda t: 1 / (1 + t ** 2)
+    nodes = np.linspace(-5, 5, 21)
+    p = interpolate(f, nodes)
+    t = np.linspace(-5, 5, 1000)
+    plt.figure()
+    plt.plot(t, f(t), label="f(t) = 1/(1+t^2)")
+    plt.plot(t, eval_poly(p, t), "--", label="interpolating polynomial")
+    plt.plot(nodes, f(nodes), "o", label="nodes")
+    plt.ylim(-2, 2)
+    plt.legend()
+    plt.title("Runge's phenomenon, 21 nodes")
+
+    # What goes wrong (Runge's phenomenon): the polynomial of degree 20 passes
+    # through every node, but near the ends of the interval it oscillates wildly
+    # between the nodes and moves far away from f. Taking more equally spaced
+    # nodes makes these oscillations larger, not smaller.
+
+    plt.show()
